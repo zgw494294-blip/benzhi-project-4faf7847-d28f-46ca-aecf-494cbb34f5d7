@@ -46,10 +46,44 @@ type CaseQueuePage struct {
 	Summary    CaseQueueSummary `json:"summary"`
 }
 
+// queueCursor 锁定"上一页最后一条"在稳定排序中的位置。
+//
+// 采用键集游标而非数值偏移：保存最后返回项的排序键
+// （优先级、开放阻断数、档案编号），恢复时返回排序严格靠后的条目。
+// 这样即使队列因评估/审查导致状态变化而重排，或服务重启重建队列，
+// 也不会重复返回已经分页过的档案，签名校验仍然有效。
 type queueCursor struct {
-	Offset    int    `json:"offset"`
-	Filter    string `json:"filter"`
-	Signature string `json:"signature"`
+	// CursorAfter 指示游标指向的最后一条排序键；首页请求时为空。
+	CursorAfter *caseSortKey `json:"after,omitempty"`
+	Filter      string       `json:"filter"`
+	Signature   string       `json:"signature,omitempty"`
+}
+
+// caseSortKey 复刻 QueryCases 中的稳定排序顺序：
+// 优先级升序 → 开放阻断数降序 → 档案编号升序。
+type caseSortKey struct {
+	Priority          int    `json:"priority"`
+	OpenBlockingCount int    `json:"openBlockingCount"`
+	CaseNumber        string `json:"caseNumber"`
+}
+
+func caseSortKeyOf(item CaseQueueItem) caseSortKey {
+	_, _, priority := nextCaseAction(item.RelocationCase)
+	return caseSortKey{Priority: priority, OpenBlockingCount: item.OpenBlockingCount, CaseNumber: item.CaseNumber}
+}
+
+// sortAfter 报告 candidate 是否在 key 的稳定排序之后（严格靠后）。
+// 与 QueryCases 的 sort.Slice 顺序保持一致。
+func caseSortAfter(key caseSortKey, candidate CaseQueueItem) bool {
+	ck := caseSortKeyOf(candidate)
+	if ck.Priority != key.Priority {
+		return ck.Priority > key.Priority
+	}
+	if ck.OpenBlockingCount != key.OpenBlockingCount {
+		// 阻断数大的靠前，故大的"之前"，小的"之后"
+		return ck.OpenBlockingCount < key.OpenBlockingCount
+	}
+	return ck.CaseNumber > key.CaseNumber
 }
 
 func (s *Service) QueryCases(ctx context.Context, query CaseQuery) (CaseQueuePage, error) {
@@ -100,10 +134,16 @@ func (s *Service) QueryCases(ctx context.Context, query CaseQuery) (CaseQueuePag
 		if err != nil {
 			return CaseQueuePage{}, &ValidationError{Message: "cursor 无效或已失效"}
 		}
-		if cursor.Offset < 0 || cursor.Offset > len(queue) {
-			return CaseQueuePage{}, &ValidationError{Message: "cursor 无效或已失效"}
+		if cursor.CursorAfter != nil {
+			// 键集翻页：跳过排序不严格靠后的条目，避免重复返回已分页档案。
+			start = len(queue)
+			for i, item := range queue {
+				if caseSortAfter(*cursor.CursorAfter, item) {
+					start = i
+					break
+				}
+			}
 		}
-		start = cursor.Offset
 	}
 	summary := CaseQueueSummary{Total: len(queue), ByStatus: make(map[string]int)}
 	for _, item := range queue {
@@ -115,10 +155,12 @@ func (s *Service) QueryCases(ctx context.Context, query CaseQuery) (CaseQueuePag
 	}
 	page := CaseQueuePage{Items: append([]CaseQueueItem(nil), queue[start:end]...), Summary: summary}
 	if end < len(queue) && end > start {
-		page.NextCursor = encodeQueueCursor(queueCursor{Offset: end, Filter: filter})
+		page.NextCursor = encodeQueueCursor(queueCursor{CursorAfter: ptrCaseSortKey(caseSortKeyOf(queue[end-1])), Filter: filter})
 	}
 	return page, nil
 }
+
+func ptrCaseSortKey(key caseSortKey) *caseSortKey { return &key }
 
 func matchesCaseKeyword(item domain.RelocationCase, keyword string) bool {
 	values := []string{item.CaseNumber}
@@ -190,7 +232,10 @@ func decodeQueueCursor(value, filter string) (queueCursor, error) {
 		return queueCursor{}, err
 	}
 	var cursor queueCursor
-	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Filter != filter || cursor.Offset < 0 {
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Filter != filter {
+		return queueCursor{}, fmt.Errorf("cursor payload invalid")
+	}
+	if cursor.CursorAfter != nil && cursor.CursorAfter.CaseNumber == "" {
 		return queueCursor{}, fmt.Errorf("cursor payload invalid")
 	}
 	signature, err := hex.DecodeString(cursor.Signature)
