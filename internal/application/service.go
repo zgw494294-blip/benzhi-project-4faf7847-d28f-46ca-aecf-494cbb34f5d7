@@ -25,7 +25,29 @@ type Service struct {
 }
 
 type caseLock struct {
-	mu sync.Mutex
+	hold chan struct{}
+}
+
+func newCaseLock() *caseLock {
+	ch := make(chan struct{}, 1)
+	ch <- struct{}{}
+	return &caseLock{hold: ch}
+}
+
+// acquire waits for the per-case lock while honoring ctx cancellation. When a
+// caller cancels while waiting it returns context.Canceled immediately and
+// does not acquire the lock; otherwise it returns an unlock function and nil.
+// Lock acquisition is still strictly serialized for non-canceled callers.
+func (l *caseLock) acquire(ctx context.Context) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-l.hold:
+		return func() { l.hold <- struct{}{} }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func NewService(repository Repository, clock Clock, ids IDGenerator) *Service {
@@ -62,12 +84,11 @@ func (s *Service) lock(ctx context.Context, caseID string) (func(), error) {
 	s.locksMu.Lock()
 	mu := s.locks[caseID]
 	if mu == nil {
-		mu = &caseLock{}
+		mu = newCaseLock()
 		s.locks[caseID] = mu
 	}
 	s.locksMu.Unlock()
-	mu.mu.Lock()
-	return mu.mu.Unlock, nil
+	return mu.acquire(ctx)
 }
 
 func (s *Service) GetCase(ctx context.Context, caseID string) (domain.RelocationCase, error) {
