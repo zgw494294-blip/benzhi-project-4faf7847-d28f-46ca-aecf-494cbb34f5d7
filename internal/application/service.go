@@ -108,6 +108,16 @@ func (s *Service) ListCases(ctx context.Context) ([]domain.RelocationCase, error
 	return items, nil
 }
 
+// invalidateCaseList drops the cached case list so the next ListCases call
+// re-reads fresh state from the repository. Any successful write (create or
+// commit) may have changed persisted state, so the cache must not survive it
+// within the same Service lifecycle.
+func (s *Service) invalidateCaseList() {
+	s.caseListMu.Lock()
+	s.caseList = nil
+	s.caseListMu.Unlock()
+}
+
 func (s *Service) Timeline(ctx context.Context, caseID string) ([]TimelineEntry, error) {
 	return s.repository.Timeline(ctx, caseID)
 }
@@ -136,6 +146,7 @@ func (s *Service) mutate(ctx context.Context, caseID string, expected int64, key
 		// Repository may already know this key; allow it to return the original result.
 		result, commitErr := s.repository.Commit(ctx, CommitRequest{CaseID: caseID, ExpectedVersion: expected, IdempotencyKey: key})
 		if commitErr == nil && result.Idempotent {
+			s.invalidateCaseList()
 			return result.State, nil
 		}
 		return domain.RelocationCase{}, err
@@ -148,6 +159,7 @@ func (s *Service) mutate(ctx context.Context, caseID string, expected int64, key
 	if err != nil {
 		return domain.RelocationCase{}, err
 	}
+	s.invalidateCaseList()
 	return result.State, nil
 }
 

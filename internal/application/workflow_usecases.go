@@ -57,6 +57,7 @@ func (s *Service) IssuePermit(ctx context.Context, caseID string, command IssueP
 	if err := checkVersion(current, command.ExpectedVersion); err != nil {
 		result, commitErr := s.repository.Commit(ctx, CommitRequest{CaseID: caseID, ExpectedVersion: command.ExpectedVersion, IdempotencyKey: command.IdempotencyKey})
 		if commitErr == nil && result.Idempotent {
+			s.invalidateCaseList()
 			return result.State, nil
 		}
 		return domain.RelocationCase{}, err
@@ -92,6 +93,7 @@ func (s *Service) IssuePermit(ctx context.Context, caseID string, command IssueP
 	if err != nil {
 		return domain.RelocationCase{}, err
 	}
+	s.invalidateCaseList()
 	return result.State, nil
 }
 

@@ -24,6 +24,7 @@ func (s *Service) CreateCase(ctx context.Context, command CreateCaseCommand) (do
 	if err != nil {
 		return domain.RelocationCase{}, mapRepositoryError(err)
 	}
+	s.invalidateCaseList()
 	return result.State, nil
 }
 
