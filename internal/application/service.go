@@ -21,7 +21,11 @@ type Service struct {
 	clock      Clock
 	ids        IDGenerator
 	locksMu    sync.Mutex
-	locks      map[string]*sync.Mutex
+	locks      map[string]*caseLock
+}
+
+type caseLock struct {
+	mu sync.Mutex
 }
 
 func NewService(repository Repository, clock Clock, ids IDGenerator) *Service {
@@ -31,7 +35,7 @@ func NewService(repository Repository, clock Clock, ids IDGenerator) *Service {
 	if ids == nil {
 		ids = randomIDs{}
 	}
-	return &Service{repository: repository, clock: clock, ids: ids, locks: make(map[string]*sync.Mutex)}
+	return &Service{repository: repository, clock: clock, ids: ids, locks: make(map[string]*caseLock)}
 }
 
 type randomIDs struct{}
@@ -51,16 +55,19 @@ func ValidateIdempotencyKey(key string) error {
 	return nil
 }
 
-func (s *Service) lock(caseID string) func() {
+func (s *Service) lock(ctx context.Context, caseID string) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.locksMu.Lock()
 	mu := s.locks[caseID]
 	if mu == nil {
-		mu = &sync.Mutex{}
+		mu = &caseLock{}
 		s.locks[caseID] = mu
 	}
 	s.locksMu.Unlock()
-	mu.Lock()
-	return mu.Unlock
+	mu.mu.Lock()
+	return mu.mu.Unlock, nil
 }
 
 func (s *Service) GetCase(ctx context.Context, caseID string) (domain.RelocationCase, error) {
@@ -110,7 +117,10 @@ func (s *Service) mutate(ctx context.Context, caseID string, expected int64, key
 	if err := ValidateIdempotencyKey(key); err != nil {
 		return domain.RelocationCase{}, err
 	}
-	unlock := s.lock(caseID)
+	unlock, err := s.lock(ctx, caseID)
+	if err != nil {
+		return domain.RelocationCase{}, err
+	}
 	defer unlock()
 	current, err := s.repository.Get(ctx, caseID)
 	if err != nil {

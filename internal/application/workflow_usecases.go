@@ -48,7 +48,10 @@ func (s *Service) IssuePermit(ctx context.Context, caseID string, command IssueP
 	if err := ValidateIdempotencyKey(command.IdempotencyKey); err != nil {
 		return domain.RelocationCase{}, err
 	}
-	unlock := s.lock(caseID)
+	unlock, err := s.lock(ctx, caseID)
+	if err != nil {
+		return domain.RelocationCase{}, err
+	}
 	defer unlock()
 	current, err := s.repository.Get(ctx, caseID)
 	if err != nil {
