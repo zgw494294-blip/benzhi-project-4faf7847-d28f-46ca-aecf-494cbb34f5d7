@@ -163,29 +163,7 @@ func clonePrecheck(source PrecheckRecord) PrecheckRecord {
 }
 
 func clonePermit(source WorkPermit) WorkPermit {
-	clone := source
-	clone.PrecheckSnapshot = clonePrecheck(source.PrecheckSnapshot)
-	if source.Snapshot.TreeProfile != nil {
-		value := *source.Snapshot.TreeProfile
-		clone.Snapshot.TreeProfile = &value
-	}
-	if source.Snapshot.Destination != nil {
-		value := *source.Snapshot.Destination
-		clone.Snapshot.Destination = &value
-	}
-	if source.Snapshot.Revision != nil {
-		value := cloneRevision(*source.Snapshot.Revision)
-		clone.Snapshot.Revision = &value
-	}
-	if source.Snapshot.Checklist != nil {
-		value := cloneChecklist(*source.Snapshot.Checklist)
-		clone.Snapshot.Checklist = &value
-	}
-	if source.Snapshot.Precheck != nil {
-		value := clonePrecheck(*source.Snapshot.Precheck)
-		clone.Snapshot.Precheck = &value
-	}
-	return clone
+	return source
 }
 
 func sortedChecklistItems(source []ChecklistItem) []ChecklistItem {
