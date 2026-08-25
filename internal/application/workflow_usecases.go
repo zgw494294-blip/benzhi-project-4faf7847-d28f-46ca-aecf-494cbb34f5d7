@@ -111,7 +111,23 @@ func (s *Service) PermitEligibility(ctx context.Context, caseID string) (domain.
 	if err != nil {
 		return domain.PermitEligibility{}, err
 	}
-	return item.PermitEligibilityAt(s.clock.Now()), nil
+	s.eligibilityMu.RLock()
+	cached := s.eligibility
+	s.eligibilityMu.RUnlock()
+	if cached.caseID == item.CaseID && cached.version == item.Version {
+		return clonePermitEligibility(cached.result), nil
+	}
+	result := item.PermitEligibilityAt(s.clock.Now())
+	s.eligibilityMu.Lock()
+	s.eligibility = eligibilityCacheEntry{caseID: item.CaseID, version: item.Version, result: clonePermitEligibility(result)}
+	s.eligibilityMu.Unlock()
+	return result, nil
+}
+
+func clonePermitEligibility(source domain.PermitEligibility) domain.PermitEligibility {
+	clone := source
+	clone.Items = append([]domain.EligibilityItem(nil), source.Items...)
+	return clone
 }
 
 type PermitView struct {

@@ -17,11 +17,19 @@ import (
 var idempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`)
 
 type Service struct {
-	repository Repository
-	clock      Clock
-	ids        IDGenerator
-	locksMu    sync.Mutex
-	locks      map[string]*sync.Mutex
+	repository    Repository
+	clock         Clock
+	ids           IDGenerator
+	locksMu       sync.Mutex
+	locks         map[string]*sync.Mutex
+	eligibilityMu sync.RWMutex
+	eligibility   eligibilityCacheEntry
+}
+
+type eligibilityCacheEntry struct {
+	caseID  string
+	version int64
+	result  domain.PermitEligibility
 }
 
 func NewService(repository Repository, clock Clock, ids IDGenerator) *Service {
