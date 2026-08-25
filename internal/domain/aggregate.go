@@ -282,18 +282,7 @@ func (c *RelocationCase) RecordPrecheck(record PrecheckRecord, now time.Time) er
 	if err != nil {
 		return err
 	}
-	byCode := make(map[string]ChecklistItem, len(record.Items))
-	for _, item := range record.Items {
-		byCode[item.Code] = item
-	}
-	normalized := make([]ChecklistItem, 0, len(c.FrozenChecklist.Items))
-	for _, templateItem := range c.FrozenChecklist.Items {
-		submitted := byCode[templateItem.Code]
-		templateItem.Passed = submitted.Passed
-		templateItem.Note = strings.TrimSpace(submitted.Note)
-		normalized = append(normalized, templateItem)
-	}
-	record.Items = normalized
+	record.Items = append([]ChecklistItem(nil), record.Items...)
 	record.Passed = passed
 	c.Prechecks = append(c.Prechecks, record)
 	c.touch(now)
