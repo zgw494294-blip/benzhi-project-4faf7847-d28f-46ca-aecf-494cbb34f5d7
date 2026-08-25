@@ -187,9 +187,6 @@ func (r *Repository) commitLocked(request application.CommitRequest) (applicatio
 		return application.CommitResult{}, err
 	}
 	record.Checksum = checksum
-	if err := appendFrame(r.logFile, record); err != nil {
-		return application.CommitResult{}, err
-	}
 	r.cases[record.CaseID] = record.State
 	r.idempotency[record.IdempotencyKey] = idempotencyResult{CaseID: record.CaseID, Sequence: record.Sequence, Version: record.CaseVersion, State: record.State}
 	r.timeline[record.CaseID] = append(r.timeline[record.CaseID], application.TimelineEntry{Sequence: record.Sequence, EventType: record.EventType, CaseID: record.CaseID, CaseVersion: record.CaseVersion, IdempotencyKey: record.IdempotencyKey, OccurredAt: record.OccurredAt, Summary: record.Summary})
@@ -197,6 +194,9 @@ func (r *Repository) commitLocked(request application.CommitRequest) (applicatio
 	r.lastDigest = record.Checksum
 	if record.EventType == "case.created" && r.caseCounter == 0 {
 		r.caseCounter = 1
+	}
+	if err := appendFrame(r.logFile, record); err != nil {
+		return application.CommitResult{}, err
 	}
 	if err := r.writeSnapshotLocked(); err != nil {
 		return application.CommitResult{}, fmt.Errorf("事件已落盘但快照更新失败: %w", err)
