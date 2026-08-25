@@ -47,9 +47,7 @@ type CaseQueuePage struct {
 }
 
 type queueCursor struct {
-	Priority  int    `json:"priority"`
-	Blockers  int    `json:"blockers"`
-	Number    string `json:"number"`
+	Offset    int    `json:"offset"`
 	Filter    string `json:"filter"`
 	Signature string `json:"signature"`
 }
@@ -102,17 +100,10 @@ func (s *Service) QueryCases(ctx context.Context, query CaseQuery) (CaseQueuePag
 		if err != nil {
 			return CaseQueuePage{}, &ValidationError{Message: "cursor 无效或已失效"}
 		}
-		found := false
-		for i, item := range queue {
-			_, _, priority := nextCaseAction(item.RelocationCase)
-			if priority == cursor.Priority && item.OpenBlockingCount == cursor.Blockers && item.CaseNumber == cursor.Number {
-				start, found = i+1, true
-				break
-			}
-		}
-		if !found {
+		if cursor.Offset < 0 || cursor.Offset > len(queue) {
 			return CaseQueuePage{}, &ValidationError{Message: "cursor 无效或已失效"}
 		}
+		start = cursor.Offset
 	}
 	summary := CaseQueueSummary{Total: len(queue), ByStatus: make(map[string]int)}
 	for _, item := range queue {
@@ -124,9 +115,7 @@ func (s *Service) QueryCases(ctx context.Context, query CaseQuery) (CaseQueuePag
 	}
 	page := CaseQueuePage{Items: append([]CaseQueueItem(nil), queue[start:end]...), Summary: summary}
 	if end < len(queue) && end > start {
-		last := queue[end-1]
-		_, _, priority := nextCaseAction(last.RelocationCase)
-		page.NextCursor = encodeQueueCursor(queueCursor{Priority: priority, Blockers: last.OpenBlockingCount, Number: last.CaseNumber, Filter: filter})
+		page.NextCursor = encodeQueueCursor(queueCursor{Offset: end, Filter: filter})
 	}
 	return page, nil
 }
@@ -201,7 +190,7 @@ func decodeQueueCursor(value, filter string) (queueCursor, error) {
 		return queueCursor{}, err
 	}
 	var cursor queueCursor
-	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Filter != filter || cursor.Number == "" {
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Filter != filter || cursor.Offset < 0 {
 		return queueCursor{}, fmt.Errorf("cursor payload invalid")
 	}
 	signature, err := hex.DecodeString(cursor.Signature)
