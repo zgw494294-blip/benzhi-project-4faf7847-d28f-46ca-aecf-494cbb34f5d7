@@ -1,0 +1,23 @@
+{
+  "contract_version": "project-capabilities-v1",
+  "project_name": "heritage-tree-relocation-permit",
+  "metrics": {
+    "production_go_files": 24,
+    "production_go_lines_over_2000": true,
+    "file_persistence": true,
+    "http_api_count": 13,
+    "business_feature_count": 7,
+    "web_ui": true
+  },
+  "capabilities": [
+    "古树迁移档案与版本状态机",
+    "树体和迁入地跨实体评估规则",
+    "迁移保护方案修订与风险控制",
+    "技术审查、整改证据和逐项复核",
+    "开工前冻结清单核验",
+    "不可变许可冻结与确定性摘要",
+    "摘要链事件日志、原子快照与恢复",
+    "同源浏览器工作台"
+  ]
+}
+
