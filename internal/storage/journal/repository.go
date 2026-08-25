@@ -77,12 +77,6 @@ func (r *Repository) recover() error {
 		if r.cases == nil {
 			r.cases = make(map[string]domain.RelocationCase)
 		}
-		r.idempotency = snapshot.Idempotency
-		if r.idempotency == nil {
-			r.idempotency = make(map[string]idempotencyResult)
-		}
-		r.caseCounter = snapshot.CaseCounter
-		r.permitCounter = snapshot.PermitCounter
 		startSequence = snapshot.LastSequence
 	}
 	for _, record := range records {
