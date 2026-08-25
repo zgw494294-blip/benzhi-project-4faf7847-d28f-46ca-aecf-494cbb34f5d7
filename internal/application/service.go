@@ -22,6 +22,8 @@ type Service struct {
 	ids        IDGenerator
 	locksMu    sync.Mutex
 	locks      map[string]*sync.Mutex
+	caseListMu sync.RWMutex
+	caseList   []domain.RelocationCase
 }
 
 func NewService(repository Repository, clock Clock, ids IDGenerator) *Service {
@@ -84,11 +86,25 @@ func (s *Service) GetCaseView(ctx context.Context, caseID string) (CaseView, err
 }
 
 func (s *Service) ListCases(ctx context.Context) ([]domain.RelocationCase, error) {
+	s.caseListMu.RLock()
+	if s.caseList != nil {
+		items := cloneCases(s.caseList)
+		s.caseListMu.RUnlock()
+		return items, nil
+	}
+	s.caseListMu.RUnlock()
+
 	items, err := s.repository.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
+	s.caseListMu.Lock()
+	if s.caseList == nil {
+		s.caseList = cloneCases(items)
+	}
+	items = cloneCases(s.caseList)
+	s.caseListMu.Unlock()
 	return items, nil
 }
 
@@ -200,6 +216,14 @@ func cloneCase(source domain.RelocationCase) domain.RelocationCase {
 		clone.Permit = &value
 	}
 	return clone
+}
+
+func cloneCases(source []domain.RelocationCase) []domain.RelocationCase {
+	clones := make([]domain.RelocationCase, len(source))
+	for i := range source {
+		clones[i] = cloneCase(source[i])
+	}
+	return clones
 }
 
 func mapRepositoryError(err error) error {

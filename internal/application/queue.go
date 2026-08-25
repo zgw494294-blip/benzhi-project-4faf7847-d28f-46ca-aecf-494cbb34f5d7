@@ -69,7 +69,7 @@ func (s *Service) QueryCases(ctx context.Context, query CaseQuery) (CaseQueuePag
 		}
 		statusSet[status] = true
 	}
-	items, err := s.repository.List(ctx)
+	items, err := s.ListCases(ctx)
 	if err != nil {
 		return CaseQueuePage{}, err
 	}
